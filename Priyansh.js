@@ -62,15 +62,21 @@ login({ appState }, async (err, api) => {
 
     // ✅ Group Name Lock Logic
     setInterval(() => {
-        for (const threadID in global.data.groupNameLocks) {
-            const lockedName = global.data.groupNameLocks[threadID];
-            api.getThreadInfo(threadID, (err, info) => {
-                if (!err && info.threadName !== lockedName) {
+    for (const threadID in global.data.groupNameLocks) {
+        const lockedName = global.data.groupNameLocks[threadID];
+        api.getThreadInfo(threadID, (err, info) => {
+            if (!err) {
+                const currentName = info.threadName;
+                if (currentName.toLowerCase() !== lockedName.toLowerCase()) {
+                    console.log(`🔒 Group title mismatch. Resetting "${currentName}" → "${lockedName}"`);
                     api.setTitle(lockedName, threadID);
                 }
-            });
-        }
-    }, 5000);
+            } else {
+                console.error("❌ Failed to get thread info:", err);
+            }
+        });
+    }
+}, 5000);
 
     api.listenMqtt(async (err, event) => {
         if (err || !event.body || !event.senderID) return;
