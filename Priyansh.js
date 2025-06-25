@@ -124,7 +124,8 @@ login({ appState }, async (err, api) => {
 • !mkc  | 
 • !stopmkc
 • !uid [@mention]
-• !exit );
+• !imgloop (reply to image)
+• !stopimg`, threadID, messageID);
 
             case "loopmsg": {
                 const msg = args.join(" ");
@@ -237,23 +238,38 @@ login({ appState }, async (err, api) => {
                 }
             }
 
-            case "exit": {
-    if (!OWNER_UIDS.includes(senderID)) return;
-    if (!event.isGroup) return api.sendMessage("❌ This command only works in group chats.", threadID, messageID);
+            case "imgloop": {
+                const reply = event.messageReply;
 
-    api.sendMessage("👋 Leaving the group...", threadID, () => {
-        try {
-            if (typeof api.leaveGroup === "function") {
-                api.leaveGroup(threadID);
-            } else {
-                api.removeUserFromGroup(api.getCurrentUserID(), threadID);
+                if (!reply || !reply.attachments || reply.attachments.length === 0 || reply.attachments[0].type !== "photo") {
+                    return api.sendMessage("❌ Please reply to an image with `=imgloop`.", threadID, messageID);
+                }
+
+                if (global.data.imgLoops[threadID]) {
+                    return api.sendMessage("⚠️ Image loop already running. Use `=stopimg` to stop.", threadID, messageID);
+                }
+
+                const imageURL = reply.attachments[0].url;
+                const sendImage = () => {
+                    api.sendMessage({ body: "", attachment: api.getStreamFromURL(imageURL) }, threadID);
+                };
+
+                sendImage();
+                const loop = setInterval(sendImage, 10000);
+                global.data.imgLoops[threadID] = loop;
+
+                return api.sendMessage("🔁 Image loop started. Use `=stopimg` to stop.", threadID, messageID);
             }
-        } catch (e) {
-            api.sendMessage("❌ Failed to leave the group. Please remove manually.", threadID);
-        }
-    });
-    break;
-}
+
+            case "stopimg": {
+                if (!global.data.imgLoops[threadID]) {
+                    return api.sendMessage("⚠️ No image loop is currently running.", threadID, messageID);
+                }
+
+                clearInterval(global.data.imgLoops[threadID]);
+                delete global.data.imgLoops[threadID];
+                return api.sendMessage("🛑 Image loop stopped.", threadID, messageID);
+            }
 
             default:
                 return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
