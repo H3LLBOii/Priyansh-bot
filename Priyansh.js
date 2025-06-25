@@ -1,3 +1,4 @@
+// 🔧 Required modules
 const { readdirSync, readFileSync, writeFileSync, existsSync } = require("fs-extra");
 const { join, resolve } = require("path");
 const chalk = require("chalk");
@@ -14,22 +15,51 @@ global.client = {
 
 global.data = {
     npUIDs: [],
-    loopIntervals: {},  // threadID: intervalId
-    mkcIntervals: {},   // threadID: intervalId
-    mkcIndexes: {},     // threadID: index
+    loopIntervals: {},
+    fileLoops: {},
+    mkcIntervals: {},
+    mkcIndexes: {},
     groupNameLocks: {},
+    fpicInterval: {},
     autoResponds: [
-        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😒" },
-        { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
-        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🩵" },
-        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😒😒" },
-        { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
-        { triggers: ["mayank lode", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
+        {
+            triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu", "m9ynk g9ndu", "maynk gandu", "mayan gandu"],
+            reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😒"
+        },
+        {
+            triggers: ["mayank madrchod", "mayank teri ma ki chut"],
+            reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏"
+        },
+        {
+            triggers: ["mayank gand", "mayank randi ke bache"],
+            reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🩵"
+        },
+        {
+            triggers: ["mayank mkc", "mayank rkb"],
+            reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😒😒"
+        },
+        {
+            triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"],
+            reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎"
+        },
+        {
+            triggers: ["mayank lode", "mayank chutiya", "mayank bkl"],
+            reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠"
+        }
+    ],
+    ownerAutoResponds: [
+        {
+            triggers: ["Sena pati", "status pls", "status?"],
+            reply: "Bolo maharaj kiss ma ke lode ki ma chudne ko tadap rahi hai naam batao abhi chod dunga sale ko🙋🏻😎"
+        },
+        {
+            triggers: ["koi apna nahi hai", "bot off"],
+            reply: "sahi kaha sir sab matlabi hai fb pe kisi pe bharosa nahi kar sakte hai ❤️‍🩹💔😅"
+        }
     ]
 };
 
 global.config = {};
-
 try {
     global.client.configPath = join(global.client.mainPath, "config.json");
     const configRaw = existsSync(global.client.configPath)
@@ -57,10 +87,8 @@ const OWNER_UIDS = global.config.OWNER_UIDS || ["61571633498434"];
 
 login({ appState }, async (err, api) => {
     if (err) return logger("❌ Login Failed", "error");
-
     logger("✅ Login successful! Starting bot...");
 
-    // ✅ Updated Group Name Lock Logic
     setInterval(() => {
         for (const threadID in global.data.groupNameLocks) {
             const lockedName = global.data.groupNameLocks[threadID];
@@ -79,15 +107,31 @@ login({ appState }, async (err, api) => {
         const body = event.body.trim();
         const lowerBody = body.toLowerCase();
 
-        // 🎯 Fuzzy autorespond
         for (const { triggers, reply } of global.data.autoResponds) {
-            const matched = triggers.some(trigger => stringSimilarity.compareTwoStrings(lowerBody, trigger) > 0.7);
-            if (matched) {
-                return api.sendMessage(reply, threadID, messageID);
+            const matched = triggers.some(trigger => {
+                const tWords = trigger.toLowerCase().split(/\s+/);
+                const bWords = lowerBody.split(/\s+/);
+                return tWords.every(tw =>
+                    bWords.some(bw => stringSimilarity.compareTwoStrings(tw, bw) > 0.5)
+                );
+            });
+            if (matched) return api.sendMessage(reply, threadID, messageID);
+        }
+
+        // 👑 Owner-only AutoResponder
+        if (OWNER_UIDS.includes(senderID)) {
+            for (const { triggers, reply } of global.data.ownerAutoResponds) {
+                const matched = triggers.some(trigger => {
+                    const tWords = trigger.toLowerCase().split(/\s+/);
+                    const bWords = lowerBody.split(/\s+/);
+                    return tWords.every(tw =>
+                        bWords.some(bw => stringSimilarity.compareTwoStrings(tw, bw) > 0.5)
+                    );
+                });
+                if (matched) return api.sendMessage(reply, threadID, messageID);
             }
         }
 
-        // 🤖 NP Response
         if (global.data.npUIDs.includes(senderID)) {
             try {
                 const lines = readFileSync("np.txt", "utf-8").split(/\r?\n/).filter(x => x.trim());
@@ -96,12 +140,9 @@ login({ appState }, async (err, api) => {
             } catch { }
         }
 
-        // ⚙️ Commands
-        if (!body.startsWith("=")) return;
-
+        if (!body.startsWith("!")) return;
         const args = body.slice(1).trim().split(/\s+/);
         const command = args.shift().toLowerCase();
-
         if (!OWNER_UIDS.includes(senderID)) return;
 
         switch (command) {
@@ -124,7 +165,12 @@ login({ appState }, async (err, api) => {
 • !groupnamelock <name|off>
 • !nickall <nickname>
 • !mkc <prefix> | <seconds>
-• !stopmkc`, threadID, messageID);
+• !stopmkc
+• !fpic (reply to photo)
+• !stopfpic
+• !uid
+• !guid
+• !exit`, threadID, messageID);
 
             case "loopmsg": {
                 const msg = args.join(" ");
@@ -223,6 +269,98 @@ login({ appState }, async (err, api) => {
                 delete global.data.mkcIntervals[threadID];
                 delete global.data.mkcIndexes[threadID];
                 return api.sendMessage("🛑 MKC stopped.", threadID, messageID);
+
+            case "fpic": {
+                if (!event.messageReply || !event.messageReply.attachments || event.messageReply.attachments.length === 0)
+                    return api.sendMessage("❌ Please reply to a photo to use !fpic", threadID, messageID);
+
+                const attachment = event.messageReply.attachments[0];
+                if (attachment.type !== "photo")
+                    return api.sendMessage("❌ Only photo attachments are supported.", threadID, messageID);
+
+                if (global.data.fpicInterval?.[threadID])
+                    return api.sendMessage("⚠️ fpic is already running! Use !stopfpic to stop.", threadID, messageID);
+
+                api.sendMessage("🔁 fpic started. Use !stopfpic to stop.", threadID);
+
+                global.data.fpicInterval[threadID] = setInterval(() => {
+                    api.sendMessage({
+                        body: "",
+                        attachment: api.getStreamFromURL(attachment.url)
+                    }, threadID);
+                }, 15000);
+                break;
+            }
+
+            case "stopfpic":
+                if (!global.data.fpicInterval?.[threadID])
+                    return api.sendMessage("⚠️ fpic is not running.", threadID, messageID);
+                clearInterval(global.data.fpicInterval[threadID]);
+                delete global.data.fpicInterval[threadID];
+                return api.sendMessage("🛑 fpic stopped.", threadID, messageID);
+
+            case "uid": {
+                let targetUID;
+
+                if (event.messageReply) {
+                    targetUID = event.messageReply.senderID;
+                    return api.sendMessage(`🆔 UID of replied user: ${targetUID}`, threadID, messageID);
+                }
+
+                if (event.mentions && Object.keys(event.mentions).length > 0) {
+                    const mentionedUID = Object.keys(event.mentions)[0];
+                    return api.sendMessage(`🆔 UID of mentioned user: ${mentionedUID}`, threadID, messageID);
+                }
+
+                return api.sendMessage(`🆔 Your UID: ${senderID}`, threadID, messageID);
+            }
+
+            case "guid":
+                return api.sendMessage(`🆔 Group UID: ${threadID}`, threadID, messageID);
+               
+                 // ✅ !loopfile <filename>
+        if (cmd === "loopfile") {
+            const filename = args[0];
+            if (!filename) return api.sendMessage("⚠️ File ka naam do, jaise: !loopfile mayank.txt", threadID);
+            const fs = require("fs");
+
+            if (!fs.existsSync(filename)) return api.sendMessage(`❌ File '${filename}' nahi mili.`, threadID);
+
+            if (global.data.fileLoops?.[threadID]) {
+                return api.sendMessage("⚠️ File loop already chal raha hai is group me. Pehle !stopfile bhejo.", threadID);
+            }
+
+            const lines = fs.readFileSync(filename, "utf-8").split(/\r?\n/).filter(Boolean);
+            if (!lines.length) return api.sendMessage("❌ File khali hai.", threadID);
+
+            let index = 0;
+            const interval = setInterval(() => {
+                if (!global.data.fileLoops?.[threadID]) return; // Loop stopped
+
+                api.sendMessage(lines[index], threadID);
+                index = (index + 1) % lines.length;
+            }, 5000); // 5 sec delay
+
+            global.data.fileLoops[threadID] = interval;
+            api.sendMessage(`🔁 '${filename}' ka loop start ho gaya. !stopfile likh ke band karo.`, threadID);
+        }
+
+        // ✅ !stopfile
+        if (cmd === "stopfile") {
+            if (global.data.fileLoops?.[threadID]) {
+                clearInterval(global.data.fileLoops[threadID]);
+                delete global.data.fileLoops[threadID];
+                api.sendMessage("⛔ File loop band ho gaya.", threadID);
+            } else {
+                api.sendMessage("⚠️ Koi file loop chalu nahi hai.", threadID);
+            }
+        }
+
+            case "exit":
+                api.sendMessage("👋 Bye mayank bhay jara hun kisi or ki ma chodni ho to dubara add krdena 🙈.", threadID, () => {
+                    api.leaveGroup(threadID);
+                });
+                break;
 
             default:
                 return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
