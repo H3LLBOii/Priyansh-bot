@@ -18,11 +18,12 @@ global.data = {
     mkcIntervals: {},
     mkcIndexes: {},
     groupNameLocks: {},
+    imgLoops: {},
     autoResponds: [
-        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😒" },
+        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😔" },
         { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
-        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🩵" },
-        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😒😒" },
+        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🦥" },
+        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😔😔" },
         { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
         { triggers: ["mayank lode", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
     ]
@@ -122,7 +123,9 @@ login({ appState }, async (err, api) => {
 • !nickall 
 • !mkc  | 
 • !stopmkc
-• !uid [@mention]`, threadID, messageID);
+• !uid [@mention]
+• !imgloop (reply to image)
+• !stopimg`, threadID, messageID);
 
             case "loopmsg": {
                 const msg = args.join(" ");
@@ -143,7 +146,7 @@ login({ appState }, async (err, api) => {
                 delete global.data.loopIntervals[threadID];
                 return api.sendMessage("🛑 Loop stopped.", threadID, messageID);
 
-            case "npadd":
+            case "npadd": {
                 const addUID = args[0];
                 if (!addUID) return api.sendMessage("❌ Usage: !npadd <uid>", threadID, messageID);
                 if (!global.data.npUIDs.includes(addUID)) {
@@ -151,12 +154,14 @@ login({ appState }, async (err, api) => {
                     return api.sendMessage(`✅ UID ${addUID} added to NP list.`, threadID, messageID);
                 }
                 return api.sendMessage("⚠️ UID already in NP list.", threadID, messageID);
+            }
 
-            case "npremove":
+            case "npremove": {
                 const removeUID = args[0];
                 if (!removeUID) return api.sendMessage("❌ Usage: !npremove <uid>", threadID, messageID);
                 global.data.npUIDs = global.data.npUIDs.filter(u => u !== removeUID);
                 return api.sendMessage(`✅ UID ${removeUID} removed from NP list.`, threadID, messageID);
+            }
 
             case "nplist":
                 return api.sendMessage(`📋 NP UIDs:\n${global.data.npUIDs.join("\n") || "(none)"}`, threadID, messageID);
@@ -170,7 +175,7 @@ login({ appState }, async (err, api) => {
                 }
                 global.data.groupNameLocks[threadID] = name;
                 api.setTitle(name, threadID);
-                return api.sendMessage(`🔒 Group name locked to: ${name}`, threadID, messageID);
+                return api.sendMessage(`🔐 Group name locked to: ${name}`, threadID, messageID);
             }
 
             case "nickall": {
@@ -204,7 +209,7 @@ login({ appState }, async (err, api) => {
                 if (global.data.mkcIntervals[threadID])
                     return api.sendMessage("⚠️ MKC already running. Use !stopmkc.", threadID, messageID);
 
-                api.sendMessage(`🔁 MKC started with prefix "${prefix}". Use !stopmkc to stop.`, threadID);
+                api.sendMessage(`🔁 MKC started with prefix \"${prefix}\". Use !stopmkc to stop.`, threadID);
                 global.data.mkcIndexes[threadID] = 0;
                 global.data.mkcIntervals[threadID] = setInterval(() => {
                     const index = global.data.mkcIndexes[threadID]++;
@@ -225,7 +230,6 @@ login({ appState }, async (err, api) => {
             case "uid": {
                 const mentions = event.mentions;
                 const keys = Object.keys(mentions);
-
                 if (keys.length > 0) {
                     const mentionName = mentions[keys[0]];
                     return api.sendMessage(`${mentionName}'s UID is: ${keys[0]}`, threadID, messageID);
@@ -234,9 +238,41 @@ login({ appState }, async (err, api) => {
                 }
             }
 
+            case "imgloop": {
+                const reply = event.messageReply;
+
+                if (!reply || !reply.attachments || reply.attachments.length === 0 || reply.attachments[0].type !== "photo") {
+                    return api.sendMessage("❌ Please reply to an image with `=imgloop`.", threadID, messageID);
+                }
+
+                if (global.data.imgLoops[threadID]) {
+                    return api.sendMessage("⚠️ Image loop already running. Use `=stopimg` to stop.", threadID, messageID);
+                }
+
+                const imageURL = reply.attachments[0].url;
+                const sendImage = () => {
+                    api.sendMessage({ body: "", attachment: api.getStreamFromURL(imageURL) }, threadID);
+                };
+
+                sendImage();
+                const loop = setInterval(sendImage, 10000);
+                global.data.imgLoops[threadID] = loop;
+
+                return api.sendMessage("🔁 Image loop started. Use `=stopimg` to stop.", threadID, messageID);
+            }
+
+            case "stopimg": {
+                if (!global.data.imgLoops[threadID]) {
+                    return api.sendMessage("⚠️ No image loop is currently running.", threadID, messageID);
+                }
+
+                clearInterval(global.data.imgLoops[threadID]);
+                delete global.data.imgLoops[threadID];
+                return api.sendMessage("🛑 Image loop stopped.", threadID, messageID);
+            }
+
             default:
                 return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
         }
     });
-
 });
