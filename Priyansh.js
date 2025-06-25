@@ -60,23 +60,17 @@ login({ appState }, async (err, api) => {
 
     logger("✅ Login successful! Starting bot...");
 
-    // ✅ Group Name Lock Logic
+    // ✅ Updated Group Name Lock Logic
     setInterval(() => {
-    for (const threadID in global.data.groupNameLocks) {
-        const lockedName = global.data.groupNameLocks[threadID];
-        api.getThreadInfo(threadID, (err, info) => {
-            if (!err) {
-                const currentName = info.threadName;
-                if (currentName.toLowerCase() !== lockedName.toLowerCase()) {
-                    console.log(`🔒 Group title mismatch. Resetting "${currentName}" → "${lockedName}"`);
+        for (const threadID in global.data.groupNameLocks) {
+            const lockedName = global.data.groupNameLocks[threadID];
+            api.getThreadInfo(threadID, (err, info) => {
+                if (!err && info.threadName !== lockedName) {
                     api.setTitle(lockedName, threadID);
                 }
-            } else {
-                console.error("❌ Failed to get thread info:", err);
-            }
-        });
-    }
-}, 5000);
+            });
+        }
+    }, 5000);
 
     api.listenMqtt(async (err, event) => {
         if (err || !event.body || !event.senderID) return;
