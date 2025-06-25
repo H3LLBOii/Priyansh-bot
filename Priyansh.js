@@ -8,107 +8,135 @@ const logger = require("./utils/log.js");
 console.log(chalk.bold.hex("#00ffff")("[ PRIYANSH BOT ] » ") + chalk.bold.hex("#00ffff")("Starting..."));
 
 global.client = {
-    mainPath: process.cwd(),
-    configPath: "",
+    mainPath: process.cwd(),
+    configPath: "",
 };
 
 global.data = {
-    npUIDs: [],
-    loopIntervals: {},
-    mkcIntervals: {},
-    mkcIndexes: {},
-    groupNameLocks: {},
-    imgLoops: {},
-    autoResponds: [
-        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😔" },
-        { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
-        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🦥" },
-        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😔😔" },
-        { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
-        { triggers: ["mayank lode", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
-    ]
+    npUIDs: [],
+    loopIntervals: {},
+    mkcIntervals: {},
+    mkcIndexes: {},
+    groupNameLocks: {},
+    imgLoops: {},
+    threadMsgIntervals: {},
+    threadMsgIndexes: {},
+    autoResponds: [
+        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😔" },
+        { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
+        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🪥" },
+        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😔😔" },
+        { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
+        { triggers: ["mayank lode", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
+    ]
 };
 
 global.config = {};
 
 try {
-    global.client.configPath = join(global.client.mainPath, "config.json");
-    const configRaw = existsSync(global.client.configPath)
-        ? require(global.client.configPath)
-        : JSON.parse(readFileSync(global.client.configPath + ".temp", 'utf8'));
-    Object.assign(global.config, configRaw);
-    logger.loader("✅ Config Loaded!");
-    writeFileSync(global.client.configPath + ".temp", JSON.stringify(global.config, null, 4), 'utf8');
+    global.client.configPath = join(global.client.mainPath, "config.json");
+    const configRaw = existsSync(global.client.configPath)
+        ? require(global.client.configPath)
+        : JSON.parse(readFileSync(global.client.configPath + ".temp", 'utf8'));
+    Object.assign(global.config, configRaw);
+    logger.loader("✅ Config Loaded!");
+    writeFileSync(global.client.configPath + ".temp", JSON.stringify(global.config, null, 4), 'utf8');
 } catch (e) {
-    logger.loader("❌ config.json not found or failed to load!", "error");
-    process.exit(1);
+    logger.loader("❌ config.json not found or failed to load!", "error");
+    process.exit(1);
 }
 
 let appState;
 try {
-    const appStateFile = resolve(join(global.client.mainPath, global.config.APPSTATEPATH || "appstate.json"));
-    appState = require(appStateFile);
-    logger.loader("✅ Appstate Loaded!");
+    const appStateFile = resolve(join(global.client.mainPath, global.config.APPSTATEPATH || "appstate.json"));
+    appState = require(appStateFile);
+    logger.loader("✅ Appstate Loaded!");
 } catch {
-    logger.loader("❌ Appstate not found!", "error");
-    process.exit(1);
+    logger.loader("❌ Appstate not found!", "error");
+    process.exit(1);
 }
 
 const OWNER_UIDS = global.config.OWNER_UIDS || ["61571633498434"];
 
 login({ appState }, async (err, api) => {
-    if (err) return logger("❌ Login Failed", "error");
+    if (err) return logger("❌ Login Failed", "error");
+    logger("✅ Login successful! Starting bot...");
 
-    logger("✅ Login successful! Starting bot...");
+    setInterval(() => {
+        for (const threadID in global.data.groupNameLocks) {
+            const lockedName = global.data.groupNameLocks[threadID];
+            api.getThreadInfo(threadID, (err, info) => {
+                if (!err && info.threadName !== lockedName) {
+                    api.setTitle(lockedName, threadID);
+                }
+            });
+        }
+    }, 5000);
 
-    setInterval(() => {
-        for (const threadID in global.data.groupNameLocks) {
-            const lockedName = global.data.groupNameLocks[threadID];
-            api.getThreadInfo(threadID, (err, info) => {
-                if (!err && info.threadName !== lockedName) {
-                    api.setTitle(lockedName, threadID);
-                }
-            });
-        }
-    }, 5000);
+    api.listenMqtt(async (err, event) => {
+        if (err || !event.body || !event.senderID) return;
+        const { threadID, senderID, messageID } = event;
+        const body = event.body.trim();
+        const lowerBody = body.toLowerCase();
 
-    api.listenMqtt(async (err, event) => {
-        if (err || !event.body || !event.senderID) return;
+        for (const { triggers, reply } of global.data.autoResponds) {
+            const matched = triggers.some(trigger => stringSimilarity.compareTwoStrings(lowerBody, trigger) > 0.7);
+            if (matched) return api.sendMessage(reply, threadID, messageID);
+        }
 
-        const { threadID, senderID, messageID } = event;
-        const body = event.body.trim();
-        const lowerBody = body.toLowerCase();
+        if (global.data.npUIDs.includes(senderID)) {
+            try {
+                const lines = readFileSync("np.txt", "utf-8").split(/\r?\n/).filter(x => x.trim());
+                const random = lines[Math.floor(Math.random() * lines.length)];
+                if (random) return api.sendMessage(random, threadID, messageID);
+            } catch { }
+        }
 
-        for (const { triggers, reply } of global.data.autoResponds) {
-            const matched = triggers.some(trigger => stringSimilarity.compareTwoStrings(lowerBody, trigger) > 0.7);
-            if (matched) {
-                return api.sendMessage(reply, threadID, messageID);
-            }
-        }
+        if (!body.startsWith("=")) return;
 
-        if (global.data.npUIDs.includes(senderID)) {
-            try {
-                const lines = readFileSync("np.txt", "utf-8").split(/\r?\n/).filter(x => x.trim());
-                const random = lines[Math.floor(Math.random() * lines.length)];
-                if (random) return api.sendMessage(random, threadID, messageID);
-            } catch { }
-        }
+        const args = body.slice(1).trim().split(/\s+/);
+        const command = args.shift().toLowerCase();
+        if (!OWNER_UIDS.includes(senderID)) return;
 
-        if (!body.startsWith("=")) return;
+        switch (command) {
+            case "ping": return api.sendMessage("pong ✅", threadID, messageID);
+            case "hello": return api.sendMessage("Hello Owner 😎", threadID, messageID);
 
-        const args = body.slice(1).trim().split(/\s+/);
-        const command = args.shift().toLowerCase();
+            case "threadmsg": {
+                const targetThread = args[0];
+                if (!targetThread) return api.sendMessage("❌ Usage: =threadmsg <threadID>", threadID, messageID);
+                if (global.data.threadMsgIntervals[targetThread]) return api.sendMessage("⚠️ Already running. Use =stopthread", threadID, messageID);
 
-        if (!OWNER_UIDS.includes(senderID)) return;
+                let lines;
+                try {
+                    lines = readFileSync("tmsg.txt", "utf-8").split(/\r?\n/).filter(x => x.trim());
+                } catch {
+                    return api.sendMessage("❌ tmsg.txt not found!", threadID, messageID);
+                }
 
-        switch (command) {
-            case "ping":
-                return api.sendMessage("pong ✅", threadID, messageID);
+                global.data.threadMsgIndexes[targetThread] = 0;
+                global.data.threadMsgIntervals[targetThread] = setInterval(() => {
+                    const i = global.data.threadMsgIndexes[targetThread]++;
+                    if (i >= lines.length) global.data.threadMsgIndexes[targetThread] = 0;
+                    api.sendMessage(lines[i % lines.length], targetThread);
+                }, 10000);
+                return api.sendMessage(`📤 Loop started in ${targetThread}. Use =stopthread to stop.`, threadID);
+            }
 
-            case "hello":
-                return api.sendMessage("Hello Owner 😎", threadID, messageID);
+            case "stopthread": {
+                const targetThread = args[0];
+                if (!targetThread) return api.sendMessage("❌ Usage: =stopthread <threadID>", threadID, messageID);
+                if (!global.data.threadMsgIntervals[targetThread]) return api.sendMessage("⚠️ No loop running.", threadID, messageID);
 
-            case "help":
+                clearInterval(global.data.threadMsgIntervals[targetThread]);
+                delete global.data.threadMsgIntervals[targetThread];
+                delete global.data.threadMsgIndexes[targetThread];
+                return api.sendMessage(`🛑 Stopped thread loop: ${targetThread}`, threadID);
+            }
+
+            // ADD ALL YOUR OTHER COMMANDS HERE (mkc, npadd, groupnamelock, etc.)
+            // NOTE: They are assumed already below or in original
+            case "help":
                 return api.sendMessage(`🛠 Available Commands:  
 
 • !ping
@@ -123,9 +151,8 @@ login({ appState }, async (err, api) => {
 • !nickall 
 • !mkc  | 
 • !stopmkc
-• !uid [@mention]
-• !imgloop (reply to image)
-• !stopimg`, threadID, messageID);
+• !uid [@mention]• =threadmsg <threadID>  → Start tmsg.txt loop in target thread
+• =stopthread <threadID> → Stop message loop in target thread`, threadID, messageID);
 
             case "loopmsg": {
                 const msg = args.join(" ");
@@ -238,41 +265,8 @@ login({ appState }, async (err, api) => {
                 }
             }
 
-            case "imgloop": {
-                const reply = event.messageReply;
-
-                if (!reply || !reply.attachments || reply.attachments.length === 0 || reply.attachments[0].type !== "photo") {
-                    return api.sendMessage("❌ Please reply to an image with `=imgloop`.", threadID, messageID);
-                }
-
-                if (global.data.imgLoops[threadID]) {
-                    return api.sendMessage("⚠️ Image loop already running. Use `=stopimg` to stop.", threadID, messageID);
-                }
-
-                const imageURL = reply.attachments[0].url;
-                const sendImage = () => {
-                    api.sendMessage({ body: "", attachment: api.getStreamFromURL(imageURL) }, threadID);
-                };
-
-                sendImage();
-                const loop = setInterval(sendImage, 10000);
-                global.data.imgLoops[threadID] = loop;
-
-                return api.sendMessage("🔁 Image loop started. Use `=stopimg` to stop.", threadID, messageID);
-            }
-
-            case "stopimg": {
-                if (!global.data.imgLoops[threadID]) {
-                    return api.sendMessage("⚠️ No image loop is currently running.", threadID, messageID);
-                }
-
-                clearInterval(global.data.imgLoops[threadID]);
-                delete global.data.imgLoops[threadID];
-                return api.sendMessage("🛑 Image loop stopped.", threadID, messageID);
-            }
-
-            default:
-                return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
-        }
-    });
+            default: return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
+        }
+    });
 });
+                
