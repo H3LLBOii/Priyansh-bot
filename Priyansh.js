@@ -321,7 +321,7 @@ login({ appState }, async (err, api) => {
                 return api.sendMessage(`🆔 Group UID: ${threadID}`, threadID, messageID);
                
                  // ✅ !loopfile <filename>
-        if (cmd === "loopfile") {
+        case "loopfile": {
             const filename = args[0];
             if (!filename) return api.sendMessage("⚠️ File ka naam do, jaise: !loopfile mayank.txt", threadID);
             const fs = require("fs");
@@ -348,7 +348,7 @@ login({ appState }, async (err, api) => {
         }
 
         // ✅ !stopfile
-        if (cmd === "stopfile") {
+        case "stopfile": {
             if (global.data.fileLoops?.[threadID]) {
                 clearInterval(global.data.fileLoops[threadID]);
                 delete global.data.fileLoops[threadID];
