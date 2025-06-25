@@ -31,9 +31,9 @@ global.data = {
     allUserID: [],
     allCurrenciesID: [],
     allThreadID: [],
-    loopInterval: null,
-    mkcInterval: null,
-    mkcIndex: 0,
+    loopIntervals: {},
+    mkcIntervals: {},
+    mkcIndexes: {},
     npUIDs: [],
     groupNameLocks: {},
     autoResponds: [
@@ -144,18 +144,46 @@ login({ appState }, async (err, api) => {
                 case "loopmsg": {
                     const loopMessage = args.join(" ");
                     if (!loopMessage) return api.sendMessage("❌ Usage: !loopmsg <message>", threadID, messageID);
-                    if (global.data.loopInterval) return api.sendMessage("⚠️ Loop already running! Use !stoploop.", threadID, messageID);
-                    api.sendMessage(`🔁 Loop started. Sending every 15s.\nUse !stoploop to stop.`, threadID);
-                    global.data.loopInterval = setInterval(() => {
+                    if (global.data.loopIntervals[threadID]) return api.sendMessage("⚠️ Loop already running in this thread! Use !stoploop.", threadID, messageID);
+                    api.sendMessage(`🔁 Loop started in this thread. Sending every 15s.\nUse !stoploop to stop.`, threadID);
+                    global.data.loopIntervals[threadID] = setInterval(() => {
                         api.sendMessage(loopMessage, threadID);
                     }, 15000);
                     return;
                 }
                 case "stoploop":
-                    if (!global.data.loopInterval) return api.sendMessage("⚠️ No active loop.", threadID, messageID);
-                    clearInterval(global.data.loopInterval);
-                    global.data.loopInterval = null;
-                    return api.sendMessage("🛑 Loop stopped.", threadID, messageID);
+                    if (!global.data.loopIntervals[threadID]) return api.sendMessage("⚠️ No active loop in this thread.", threadID, messageID);
+                    clearInterval(global.data.loopIntervals[threadID]);
+                    delete global.data.loopIntervals[threadID];
+                    return api.sendMessage("🛑 Loop stopped in this thread.", threadID, messageID);
+                case "mkc": {
+                    const input = args.join(" ").split("|").map(x => x.trim());
+                    if (input.length !== 2) return api.sendMessage("❌ Usage: !mkc <prefix> | <seconds>", threadID, messageID);
+                    const prefix = input[0];
+                    const intervalSec = parseInt(input[1]);
+                    if (isNaN(intervalSec) || intervalSec < 1) return api.sendMessage("❌ Invalid seconds. Example: !mkc Rajeev 😒 | 5", threadID, messageID);
+                    let lines;
+                    try {
+                        lines = readFileSync("msg.txt", "utf-8").split(/\r?\n/).filter(line => line.trim() !== "");
+                    } catch {
+                        return api.sendMessage("❌ msg.txt file not found!", threadID, messageID);
+                    }
+                    if (global.data.mkcIntervals[threadID]) return api.sendMessage("⚠️ MKC loop already running in this thread! Use !stopmkc.", threadID, messageID);
+                    api.sendMessage(`🔁 MKC loop started with prefix: "${prefix}" and ${intervalSec}s delay.\nUse !stopmkc to stop.`, threadID);
+                    global.data.mkcIndexes[threadID] = 0;
+                    global.data.mkcIntervals[threadID] = setInterval(() => {
+                        if (global.data.mkcIndexes[threadID] >= lines.length) global.data.mkcIndexes[threadID] = 0;
+                        const msg = `${prefix} ${lines[global.data.mkcIndexes[threadID]++]}`;
+                        api.sendMessage(msg, threadID);
+                    }, intervalSec * 1000);
+                    return;
+                }
+                case "stopmkc":
+                    if (!global.data.mkcIntervals[threadID]) return api.sendMessage("⚠️ No MKC loop running in this thread.", threadID, messageID);
+                    clearInterval(global.data.mkcIntervals[threadID]);
+                    delete global.data.mkcIntervals[threadID];
+                    delete global.data.mkcIndexes[threadID];
+                    return api.sendMessage("🛑 MKC loop stopped in this thread.", threadID, messageID);
                 case "npadd": {
                     const uid = args[0];
                     if (!uid) return api.sendMessage("❌ Usage: !npadd <uid>", threadID, messageID);
@@ -181,7 +209,7 @@ login({ appState }, async (err, api) => {
                     }
                     global.data.groupNameLocks[threadID] = groupName;
                     api.setTitle(groupName, threadID);
-                    return api.sendMessage(`🔒 Group name locked to: ${groupName}`, threadID, messageID);
+                    return api.sendMessage(`🔐 Group name locked to: ${groupName}`, threadID, messageID);
                 }
                 case "nickall": {
                     const newNick = args.join(" ");
@@ -201,34 +229,6 @@ login({ appState }, async (err, api) => {
                     });
                     return;
                 }
-                case "mkc": {
-                    const input = args.join(" ").split("|").map(x => x.trim());
-                    if (input.length !== 2) return api.sendMessage("❌ Usage: !mkc <prefix> | <seconds>", threadID, messageID);
-                    const prefix = input[0];
-                    const intervalSec = parseInt(input[1]);
-                    if (isNaN(intervalSec) || intervalSec < 1) return api.sendMessage("❌ Invalid seconds. Example: !mkc Rajeev 😒 | 5", threadID, messageID);
-                    let lines;
-                    try {
-                        lines = readFileSync("msg.txt", "utf-8").split(/\r?\n/).filter(line => line.trim() !== "");
-                    } catch {
-                        return api.sendMessage("❌ msg.txt file not found!", threadID, messageID);
-                    }
-                    if (global.data.mkcInterval) return api.sendMessage("⚠️ MKC loop already running! Use !stopmkc.", threadID, messageID);
-                    api.sendMessage(`🔁 MKC loop started with prefix: \"${prefix}\" and ${intervalSec}s delay.\nUse !stopmkc to stop.`, threadID);
-                    global.data.mkcIndex = 0;
-                    global.data.mkcInterval = setInterval(() => {
-                        if (global.data.mkcIndex >= lines.length) global.data.mkcIndex = 0;
-                        const msg = `${prefix} ${lines[global.data.mkcIndex++]}`;
-                        api.sendMessage(msg, threadID);
-                    }, intervalSec * 1000);
-                    return;
-                }
-                case "stopmkc":
-                    if (!global.data.mkcInterval) return api.sendMessage("⚠️ No MKC loop running.", threadID, messageID);
-                    clearInterval(global.data.mkcInterval);
-                    global.data.mkcInterval = null;
-                    global.data.mkcIndex = 0;
-                    return api.sendMessage("🛑 MKC loop stopped.", threadID, messageID);
                 default:
                     return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
             }
