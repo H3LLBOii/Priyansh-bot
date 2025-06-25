@@ -166,6 +166,8 @@ login({ appState }, async (err, api) => {
 • !nickall <nickname>
 • !mkc <prefix> | <seconds>
 • !stopmkc
+• !loopfile <filename> – Send lines from file every 15 sec
+• !stopfile – Stop the current file loop
 • !fpic (reply to photo)
 • !stopfpic
 • !uid
