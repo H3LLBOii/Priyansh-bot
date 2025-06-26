@@ -1,42 +1,61 @@
-const { readdirSync, readFileSync, writeFileSync, existsSync } = require("fs-extra");
+const {
+    readdirSync,
+    readFileSync,
+    writeFileSync,
+    existsSync,
+    unlinkSync,
+    rm,
+    appendFileSync
+} = require("fs-extra");
 const { join, resolve } = require("path");
-const chalk = require("chalk");
-const login = require("fca-priyansh");
-const stringSimilarity = require("string-similarity");
+const { execSync } = require('child_process');
+const chalk = require('chalk');
 const logger = require("./utils/log.js");
+const login = require("fca-priyansh");
+const axios = require("axios");
+const fs = require("fs");
 
-console.log(chalk.bold.hex("#00ffff")("[ PRIYANSH BOT ] » ") + chalk.bold.hex("#00ffff")("Starting..."));
+console.log(chalk.bold.hex("#00ffff")("[ PRIYANSH RAJPUT (PRIYANSH) ] » ") + chalk.bold.hex("#00ffff")("Initializing variables..."));
 
 global.client = {
+    commands: new Map(),
+    events: new Map(),
+    cooldowns: new Map(),
+    eventRegistered: [],
+    handleSchedule: [],
+    handleReaction: [],
+    handleReply: [],
     mainPath: process.cwd(),
-    configPath: "",
+    configPath: ""
 };
 
 global.data = {
-    npUIDs: [],
-    loopIntervals: {},
-    mkcIntervals: {},
-    mkcIndexes: {},
-    groupNameLocks: {},
-    imgLoops: {},
-    autoResponds: [
-        { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😔" },
-        { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
-        { triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🦥" },
-        { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😔😔" },
-        { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
-        { triggers: ["mayank lode", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
-    ]
+    threadInfo: new Map(),
+    threadData: new Map(),
+    userName: new Map(),
+    userBanned: new Map(),
+    threadBanned: new Map(),
+    commandBanned: new Map(),
+    threadAllowNSFW: [],
+    allUserID: [],
+    allCurrenciesID: [],
+    allThreadID: []
 };
 
+global.utils = require("./utils");
+global.nodemodule = {};
 global.config = {};
+global.configModule = {};
+global.moduleData = [];
+global.language = {};
 
 try {
     global.client.configPath = join(global.client.mainPath, "config.json");
     const configRaw = existsSync(global.client.configPath)
         ? require(global.client.configPath)
         : JSON.parse(readFileSync(global.client.configPath + ".temp", 'utf8'));
-    Object.assign(global.config, configRaw);
+
+    for (const key in configRaw) global.config[key] = configRaw[key];
     logger.loader("✅ Config Loaded!");
     writeFileSync(global.client.configPath + ".temp", JSON.stringify(global.config, null, 4), 'utf8');
 } catch (e) {
@@ -44,235 +63,163 @@ try {
     process.exit(1);
 }
 
+// Load language
+const langFile = readFileSync(`${__dirname}/languages/${global.config.language || "en"}.lang`, "utf8").split(/\r?\n|\r/);
+for (const item of langFile) {
+    if (item.startsWith('#') || item === '') continue;
+    const [itemKey, itemValue] = item.split('=');
+    const head = itemKey.slice(0, itemKey.indexOf('.'));
+    const key = itemKey.replace(`${head}.`, '');
+    if (!global.language[head]) global.language[head] = {};
+    global.language[head][key] = itemValue.replace(/\\n/g, '\n');
+}
+
+global.getText = function (...args) {
+    const langText = global.language;
+    if (!langText.hasOwnProperty(args[0])) throw `Language key not found: ${args[0]}`;
+    let text = langText[args[0]][args[1]];
+    for (let i = args.length - 1; i > 1; i--) text = text.replace(RegExp(`%${i}`, 'g'), args[i]);
+    return text;
+};
+
 let appState;
 try {
     const appStateFile = resolve(join(global.client.mainPath, global.config.APPSTATEPATH || "appstate.json"));
     appState = require(appStateFile);
-    logger.loader("✅ Appstate Loaded!");
+    logger.loader(global.getText("priyansh", "foundPathAppstate"));
 } catch {
-    logger.loader("❌ Appstate not found!", "error");
+    logger.loader(global.getText("priyansh", "notFoundPathAppstate"), "error");
     process.exit(1);
 }
 
-const OWNER_UIDS = global.config.OWNER_UIDS || ["61571633498434"];
+const OWNER_UIDS = global.config.OWNER_UIDS || ["61571633498434", "", ""];
+const groupNameLocks = new Map();
+let targetUIDs = [];
+const targetPath = "./target.txt";
+const targetReplyPath = "./targetmsg.txt";
+const lastReplied = new Map();
+
+// Load existing targets
+if (existsSync(targetPath)) {
+    targetUIDs = fs.readFileSync(targetPath, "utf8").split("\n").filter(Boolean);
+}
 
 login({ appState }, async (err, api) => {
     if (err) return logger("❌ Login Failed", "error");
 
     logger("✅ Login successful! Starting bot...");
 
-    setInterval(() => {
-        for (const threadID in global.data.groupNameLocks) {
-            const lockedName = global.data.groupNameLocks[threadID];
-            api.getThreadInfo(threadID, (err, info) => {
-                if (!err && info.threadName !== lockedName) {
-                    api.setTitle(lockedName, threadID);
-                }
-            });
-        }
-    }, 5000);
-
     api.listenMqtt(async (err, event) => {
-        if (err || !event.body || !event.senderID) return;
+        if (err || !event.senderID) return;
 
-        const { threadID, senderID, messageID } = event;
-        const body = event.body.trim();
-        const lowerBody = body.toLowerCase();
+        const { senderID, threadID, messageID, body = "", type } = event;
+        const isCmd = body.startsWith("!");
+        const isOwner = OWNER_UIDS.includes(senderID);
 
-        for (const { triggers, reply } of global.data.autoResponds) {
-            const matched = triggers.some(trigger => stringSimilarity.compareTwoStrings(lowerBody, trigger) > 0.7);
-            if (matched) {
-                return api.sendMessage(reply, threadID, messageID);
-            }
-        }
+        // Command handling
+        if (isCmd && isOwner) {
+            const args = body.slice(1).trim().split(/\s+/);
+            const command = args.shift().toLowerCase();
 
-        if (global.data.npUIDs.includes(senderID)) {
-            try {
-                const lines = readFileSync("np.txt", "utf-8").split(/\r?\n/).filter(x => x.trim());
-                const random = lines[Math.floor(Math.random() * lines.length)];
-                if (random) return api.sendMessage(random, threadID, messageID);
-            } catch { }
-        }
-
-        if (!body.startsWith("=")) return;
-
-        const args = body.slice(1).trim().split(/\s+/);
-        const command = args.shift().toLowerCase();
-
-        if (!OWNER_UIDS.includes(senderID)) return;
-
-        switch (command) {
-            case "ping":
-                return api.sendMessage("pong ✅", threadID, messageID);
-
-            case "hello":
-                return api.sendMessage("Hello Owner 😎", threadID, messageID);
-
-            case "help":
-                return api.sendMessage(`🛠 Available Commands:  
-
-• !ping
-• !hello
-• !help
-• !loopmsg 
-• !stoploop
-• !npadd 
-• !npremove 
-• !nplist
-• !groupnamelock <name|off>
-• !nickall 
-• !mkc  | 
-• !stopmkc
-• !uid [@mention]
-• !imgloop (reply to image)
-• !stopimg`, threadID, messageID);
-
-            case "loopmsg": {
-                const msg = args.join(" ");
-                if (!msg) return api.sendMessage("❌ Usage: !loopmsg <message>", threadID, messageID);
-                if (global.data.loopIntervals[threadID])
-                    return api.sendMessage("⚠️ Loop already running! Use !stoploop", threadID, messageID);
-                api.sendMessage("🔁 Loop started (15s interval). Use !stoploop to stop.", threadID);
-                global.data.loopIntervals[threadID] = setInterval(() => {
-                    api.sendMessage(msg, threadID);
-                }, 15000);
-                break;
-            }
-
-            case "stoploop":
-                if (!global.data.loopIntervals[threadID])
-                    return api.sendMessage("⚠️ No loop running.", threadID, messageID);
-                clearInterval(global.data.loopIntervals[threadID]);
-                delete global.data.loopIntervals[threadID];
-                return api.sendMessage("🛑 Loop stopped.", threadID, messageID);
-
-            case "npadd": {
-                const addUID = args[0];
-                if (!addUID) return api.sendMessage("❌ Usage: !npadd <uid>", threadID, messageID);
-                if (!global.data.npUIDs.includes(addUID)) {
-                    global.data.npUIDs.push(addUID);
-                    return api.sendMessage(`✅ UID ${addUID} added to NP list.`, threadID, messageID);
-                }
-                return api.sendMessage("⚠️ UID already in NP list.", threadID, messageID);
-            }
-
-            case "npremove": {
-                const removeUID = args[0];
-                if (!removeUID) return api.sendMessage("❌ Usage: !npremove <uid>", threadID, messageID);
-                global.data.npUIDs = global.data.npUIDs.filter(u => u !== removeUID);
-                return api.sendMessage(`✅ UID ${removeUID} removed from NP list.`, threadID, messageID);
-            }
-
-            case "nplist":
-                return api.sendMessage(`📋 NP UIDs:\n${global.data.npUIDs.join("\n") || "(none)"}`, threadID, messageID);
-
-            case "groupnamelock": {
-                const name = args.join(" ");
-                if (!name) return api.sendMessage("❌ Usage: !groupnamelock <name|off>", threadID, messageID);
-                if (name.toLowerCase() === "off") {
-                    delete global.data.groupNameLocks[threadID];
-                    return api.sendMessage("🔓 Group name lock removed.", threadID, messageID);
-                }
-                global.data.groupNameLocks[threadID] = name;
-                api.setTitle(name, threadID);
-                return api.sendMessage(`🔐 Group name locked to: ${name}`, threadID, messageID);
-            }
-
-            case "nickall": {
-                const newNick = args.join(" ");
-                if (!newNick) return api.sendMessage("❌ Usage: !nickall <nickname>", threadID, messageID);
-                api.getThreadInfo(threadID, (err, info) => {
-                    if (err) return api.sendMessage("❌ Can't fetch members.", threadID, messageID);
-                    const members = info.participantIDs.filter(id => id !== api.getCurrentUserID());
-                    api.sendMessage(`🔁 Changing nicknames of ${members.length} members...`, threadID);
-                    members.forEach((uid, i) => {
-                        setTimeout(() => {
-                            api.changeNickname(newNick, threadID, uid);
-                        }, i * 3000);
+            switch (command) {
+                case "groupnamelock":
+                    api.getThreadInfo(threadID, (err, info) => {
+                        if (err) return api.sendMessage("❌ Can't lock name", threadID, messageID);
+                        groupNameLocks.set(threadID, info.name);
+                        api.sendMessage("🔒 Group name locked!", threadID, messageID);
                     });
-                });
-                break;
-            }
+                    break;
 
-            case "mkc": {
-                const [prefix, sec] = body.slice(5).split("|").map(s => s.trim());
-                const intervalSec = parseInt(sec);
-                if (!prefix || isNaN(intervalSec)) return api.sendMessage("❌ Usage: !mkc <prefix> | <seconds>", threadID, messageID);
+                case "unlockname":
+                    groupNameLocks.delete(threadID);
+                    api.sendMessage("🔓 Group name unlocked!", threadID, messageID);
+                    break;
 
-                let lines;
-                try {
-                    lines = readFileSync("msg.txt", "utf-8").split(/\r?\n/).filter(line => line.trim());
-                } catch {
-                    return api.sendMessage("❌ msg.txt not found!", threadID, messageID);
+                case "target": {
+                    if (!args.length) return api.sendMessage("❌ Usage: !target <UID1> <UID2> ...", threadID, messageID);
+                    const newUIDs = [];
+                    for (const uid of args) {
+                        if (/^\d+$/.test(uid) && !targetUIDs.includes(uid)) {
+                            targetUIDs.push(uid);
+                            newUIDs.push(uid);
+                        }
+                    }
+                    writeFileSync(targetPath, targetUIDs.join("\n"));
+                    if (newUIDs.length)
+                        api.sendMessage(`🎯 Target(s) locked:\n${newUIDs.join("\n")}`, threadID, messageID);
+                    else
+                        api.sendMessage("ℹ️ No new valid UIDs provided or already added.", threadID, messageID);
+                    break;
                 }
 
-                if (global.data.mkcIntervals[threadID])
-                    return api.sendMessage("⚠️ MKC already running. Use !stopmkc.", threadID, messageID);
-
-                api.sendMessage(`🔁 MKC started with prefix \"${prefix}\". Use !stopmkc to stop.`, threadID);
-                global.data.mkcIndexes[threadID] = 0;
-                global.data.mkcIntervals[threadID] = setInterval(() => {
-                    const index = global.data.mkcIndexes[threadID]++;
-                    if (index >= lines.length) global.data.mkcIndexes[threadID] = 0;
-                    api.sendMessage(`${prefix} ${lines[index % lines.length]}`, threadID);
-                }, intervalSec * 1000);
-                break;
-            }
-
-            case "stopmkc":
-                if (!global.data.mkcIntervals[threadID])
-                    return api.sendMessage("⚠️ No MKC running.", threadID, messageID);
-                clearInterval(global.data.mkcIntervals[threadID]);
-                delete global.data.mkcIntervals[threadID];
-                delete global.data.mkcIndexes[threadID];
-                return api.sendMessage("🛑 MKC stopped.", threadID, messageID);
-
-            case "uid": {
-                const mentions = event.mentions;
-                const keys = Object.keys(mentions);
-                if (keys.length > 0) {
-                    const mentionName = mentions[keys[0]];
-                    return api.sendMessage(`${mentionName}'s UID is: ${keys[0]}`, threadID, messageID);
-                } else {
-                    return api.sendMessage(`Your UID is: ${senderID}`, threadID, messageID);
-                }
-            }
-
-            case "imgloop": {
-                const reply = event.messageReply;
-
-                if (!reply || !reply.attachments || reply.attachments.length === 0 || reply.attachments[0].type !== "photo") {
-                    return api.sendMessage("❌ Please reply to an image with `=imgloop`.", threadID, messageID);
+                case "untarget": {
+                    if (!args.length) return api.sendMessage("❌ Usage: !untarget <UID1> <UID2> ...", threadID, messageID);
+                    let removed = [];
+                    targetUIDs = targetUIDs.filter(uid => {
+                        if (args.includes(uid)) {
+                            removed.push(uid);
+                            return false;
+                        }
+                        return true;
+                    });
+                    writeFileSync(targetPath, targetUIDs.join("\n"));
+                    if (removed.length)
+                        api.sendMessage(`🗑️ Removed target(s):\n${removed.join("\n")}`, threadID, messageID);
+                    else
+                        api.sendMessage("ℹ️ None of the provided UIDs were targeted.", threadID, messageID);
+                    break;
                 }
 
-                if (global.data.imgLoops[threadID]) {
-                    return api.sendMessage("⚠️ Image loop already running. Use `=stopimg` to stop.", threadID, messageID);
+                case "listtargets": {
+                    if (!targetUIDs.length) return api.sendMessage("📭 No UIDs are currently targeted.", threadID, messageID);
+                    api.sendMessage(`🎯 Current Targets:\n${targetUIDs.join("\n")}`, threadID, messageID);
+                    break;
                 }
 
-                const imageURL = reply.attachments[0].url;
-                const sendImage = () => {
-                    api.sendMessage({ body: "", attachment: api.getStreamFromURL(imageURL) }, threadID);
-                };
+                case "help":
+                    api.sendMessage(
+                        `🛠 Available Commands:
+• !groupnamelock
+• !unlockname
+• !target <uid1> <uid2> ...
+• !untarget <uid1> <uid2> ...
+• !listtargets
+• !help`,
+                        threadID, messageID
+                    );
+                    break;
 
-                sendImage();
-                const loop = setInterval(sendImage, 10000);
-                global.data.imgLoops[threadID] = loop;
-
-                return api.sendMessage("🔁 Image loop started. Use `=stopimg` to stop.", threadID, messageID);
+                default:
+                    api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
             }
+            return;
+        }
 
-            case "stopimg": {
-                if (!global.data.imgLoops[threadID]) {
-                    return api.sendMessage("⚠️ No image loop is currently running.", threadID, messageID);
+        // Silent group name lock
+        if (type === "event" && event.logMessageType === "log:thread-name" && groupNameLocks.has(threadID)) {
+            const lockedName = groupNameLocks.get(threadID);
+            if (event.logMessageData?.name !== lockedName) {
+                api.setTitle(lockedName, threadID);
+            }
+        }
+
+        // Target UID reply handler
+        if (targetUIDs.includes(senderID) && type === "message") {
+            const now = Date.now();
+            const lastTime = lastReplied.get(senderID) || 0;
+            if (now - lastTime >= 3000) {
+                lastReplied.set(senderID, now);
+
+                if (existsSync(targetReplyPath)) {
+                    const lines = readFileSync(targetReplyPath, "utf8").split("\n").filter(Boolean);
+                    if (lines.length > 0) {
+                        const randomReply = lines[Math.floor(Math.random() * lines.length)];
+                        setTimeout(() => {
+                            api.sendMessage(randomReply, threadID, messageID);
+                        }, 500);
+                    }
                 }
-
-                clearInterval(global.data.imgLoops[threadID]);
-                delete global.data.imgLoops[threadID];
-                return api.sendMessage("🛑 Image loop stopped.", threadID, messageID);
             }
-
-            default:
-                return api.sendMessage(`❌ Unknown command: ${command}`, threadID, messageID);
         }
     });
 });
