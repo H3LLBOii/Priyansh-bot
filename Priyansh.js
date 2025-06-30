@@ -276,7 +276,7 @@ function fuzzyIncludesMayank(text) {
 
 // Inside your handler:
 if (fuzzyIncludesMayank(lowerBody) && isLikelyAbusive(lowerBody)) {
-    return api.sendMessage("⚠️ ⚠️ mayank papa hai tera or agar usne dekh liya to wo teri ma chod dega phir randi ke bache tu bs insaf mangta phir3ga smjha madrchod🖕🏻😒 😤", threadID, messageID);
+    return api.sendMessage("⚠️ ⚠️ jisko tu gali de raha hai na wo tera papa hai tera or agar usne dekh liya to wo teri ma chod dega phir randi ke bache tu bs insaf mangta phir3ga smjha madrchod🖕🏻😒 😤", threadID, messageID);
 }
 
 
