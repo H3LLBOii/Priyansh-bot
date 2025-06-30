@@ -37,10 +37,13 @@ global.data = {
     mkcIndexes: {},
     npUIDs: [],
     groupNameLocks: {},
+    protectedUIDs: [ // 👈 Yahan likh tu jis ko protect karna chahta hai
+    "61571633498434", "61577282254613", "100056888269923", "61563667651181"   // example — tu aur Mayank dono ka UID
+  ],
     autoResponds: [
 { triggers: ["mayank gandu", "mayank lodu", "mayank jhaatu"], reply: "teri ma ka bhosda mayank baap hai tera smjha madrchod 😒" },
 { triggers: ["mayank madrchod", "mayank teri ma ki chut"], reply: "ban gya hoshiyar apne pita ji ko gali deke bol ab teri ma chod du idhar bhen ke lode😏" },
-{ triggers: ["mayank gand", "arav mc", "arav madrchod", "arav randi", "arav lodu", "arav gand", "arav bhen", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🩵" },
+{ triggers: ["mayank gand", "mayank randi ke bache"], reply: "teri ma ki chut faar dunga sale baap ko gali deta hai madrchod ki nsaal🩵" },
 { triggers: ["mayank mkc", "mayank rkb"], reply: "rand ke bete dediya mayank jaise axhe bache ko gali use gali ni dene ata to tu hoshiyar ban rahaa madrchod😒😒" },
 { triggers: ["mayank sale", "mayank bhsdk", "mayank randi", "mayank lodu"], reply: "tu kitni bhi koshis kr lekin teri maaa mai nahi chodunga mayank chodega 😎" },
 { triggers: ["mayank lode", "mayank bhosdi", "mayank randi", "mayank bc", "mayank mc", "mayank teri mkc", "mayank chutiya", "mayank bkl"], reply: "mayank bhay is bkl ko pel du aap bolo to bahut uchal raha mc😠" }
@@ -122,13 +125,169 @@ login({ appState }, async (err, api) => {
         const body = event.body.trim();
         const lowerBody = body.toLowerCase();
 
+// 🧠 Normalize + Leetspeak + Repeat char
+function normalize(text) {
+  const leetMap = {
+    '0': 'o', '1': 'i', '3': 'e', '4': 'a',
+    '5': 's', '7': 't', '8': 'b', '9': 'g',
+    '@': 'a', '$': 's', '!': 'i'
+  };
+
+  return text
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9 ]/g, c => leetMap[c] || '')
+    .replace(/(.)\1+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 🧠 Abuse checker
+function isAbuse(text) {
+  const abusiveWords = [
+    "gandu", "chutiya", "madarchod", "mc", "bc", "bhosdi", "lund", "gaand",
+    "randi", "jhantu", "ki chut", "ke bache", "ke lode", "lga dunga", "bsdk", "bkl", "mkc", "chod", "bhosda", "gand", "kutiya"
+  ];
+
+  const cleaned = normalize(text);
+  return abusiveWords.some(word =>
+    cleaned.includes(word) ||
+    stringSimilarity.compareTwoStrings(cleaned, word) > 0.75
+  );
+}
+
+// 🛡️ Protected UID Handling
+try {
+  // 1. Mentioned user check
+  if (
+    event.mentions &&
+    Object.keys(event.mentions).length > 0 &&
+    isAbuse(lowerBody)
+  ) {
+    const attackedUIDs = Object.keys(event.mentions);
+    const protectedTarget = attackedUIDs.find(uid =>
+      global.data.protectedUIDs.includes(uid)
+    );
+
+    if (protectedTarget) {
+      const name = event.mentions[protectedTarget];
+      return api.sendMessage(
+        `⚠️ ${name} ko mention karke gali deta hai?\n🤬 Teri maa ki chut me firecracker 🔥\nBot ab tujhe pelne wala hai...`,
+        threadID,
+        messageID
+      );
+    }
+  }
+
+  // 2. Replied message check
+  if (
+    event.type === "message_reply" &&
+    isAbuse(lowerBody)
+  ) {
+    const repliedUID = event.messageReply?.senderID;
+    if (global.data.protectedUIDs.includes(repliedUID)) {
+      const name = event.messageReply?.senderName || "mere malik";
+      return api.sendMessage(
+        `🛡️ ${name} ko reply me gali deta hai?\n💣 Ab teri maa ko tag karke chodunga bc.`,
+        threadID,
+        messageID
+      );
+    }
+  }
+} catch (err) {
+  console.log("🛠️ Protected UID abuse check error:", err);
+}
+
+        
+// STEP 1: Auto-untarget if target says "mayank papa"
+if (
+  global.data.autoTargetedUIDs &&
+  global.data.autoTargetedUIDs.includes(senderID) &&
+  lowerBody.includes("mayank papa")
+) {
+  const index = global.data.autoTargetedUIDs.indexOf(senderID);
+  if (index !== -1) {
+    global.data.autoTargetedUIDs.splice(index, 1);
+    return api.sendMessage("🫡 Chal theek hai ab maaf kiya, nikal 😎", threadID, messageID);
+  }
+}
+
+// STEP 2: Targeting via reply "chup madrchod"
+if (
+  event.type === "message_reply" &&
+  lowerBody === "chup madrchod"
+) {
+  const repliedUser = event.messageReply.senderID;
+  if (!global.data.autoTargetedUIDs) global.data.autoTargetedUIDs = [];
+  if (!global.data.autoTargetedUIDs.includes(repliedUser)) {
+    global.data.autoTargetedUIDs.push(repliedUser);
+    api.sendMessage(`kya kar raha hai bhay`, threadID, messageID);
+  }
+}
+
+// STEP 3: If a targeted user sends any message, reply with "chup madrchod"
+if (
+  global.data.autoTargetedUIDs &&
+  global.data.autoTargetedUIDs.includes(senderID)
+) {
+  return api.sendMessage("chup madrchod tu msg mt kr", threadID, messageID);
+}
+      
+
+function normalize(text) {
+    const leetMap = {
+        '0': 'o', '1': 'i', '3': 'e', '4': 'a',
+        '5': 's', '7': 't', '8': 'b', '9': 'g',
+        '@': 'a', '$': 's', '!': 'i'
+    };
+
+    return text
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9 ]/g, c => leetMap[c] || '') // leetspeak to normal
+        .replace(/(.)\1+/g, '$1') // repeated chars like gaaand => gand
+        .replace(/\s+/g, ' ') // multiple spaces to single
+        .trim();
+}
+
+function isLikelyAbusive(text) {
+    const cleaned = normalize(text);
+    const compacted = cleaned.replace(/\s+/g, '');
+
+    const abuseRegex = /\b(?:gandu|chutiya|chutia|madarchod|mc|bc|bhosdi|bhosdike|lund|gaand|gaandu|chod|choda|randi|bkl|mkc|bhosda|jhaatu|bakchod|hijra|rakhail|kutta|kutiya|kamina|haraami|harami|behenchod|behnchod|bsdk|chodu|chut|laundiya|launda|jhant|jhantu)\b/;
+
+    const abusivePhrases = [
+        "gandmaar", "chodde", "choddo", "lundle", "londiya", "chodna",
+        "gaandphaad", "gandphar", "gandtod", "gandfaad", "gaandfaad",
+        "chutle", "maalle", "jhantu", "bhosdike", "lundmaar", "laude",
+        "randi ka bacha", "madarchod", "randichod", "chut ke paas",
+        "ma chod", "maa ki chut", "behen ke lode", "teri ma ki",
+        "teri behen ki", "bsdk", "mkc", "bc", "mc", "loda le", "loda de",
+        "jhant ka baal", "sex kar", "chod diya", "gaand le", "gand le",
+        "ma chod di", "behen chod", "randi", "bhosdi", "r4ndi"
+    ];
+
+    return abusivePhrases.some(p => compacted.includes(p) || cleaned.includes(p)) || abuseRegex.test(cleaned);
+}
+
+function fuzzyIncludesMayank(text) {
+    const cleaned = normalize(text);
+    const words = cleaned.split(/\s+/);
+    return words.some(word => stringSimilarity.compareTwoStrings(word, "mayank") > 0.75);
+}
+
+// Inside your handler:
+if (fuzzyIncludesMayank(lowerBody) && isLikelyAbusive(lowerBody)) {
+    return api.sendMessage("⚠️ ⚠️ mayank papa hai tera or agar usne dekh liya to wo teri ma chod dega phir randi ke bache tu bs insaf mangta phir3ga smjha madrchod🖕🏻😒 😤", threadID, messageID);
+}
+
+
         // ✅ Admin UID set karo
-const ADMIN_UID = "61571633498434"; // <-- Apna UID yahan daalo
+const ADMIN_UID = "61571633498434", "100056888269923", "61563667651181"; // <-- Apna UID yahan daalo
 
 // ✅ Admin-only triggers
 if (event.senderID === ADMIN_UID && event.body) {
     const msg = event.body.toLowerCase();
 
+   
     if (msg.includes("sena pati")) {
         api.sendMessage("🫡Kya hua maharaj kiski ma chodni hai batao abhi chod deta hun 🙋🏻🙇🏻", event.threadID, event.messageID);
         return;
@@ -211,6 +370,20 @@ case "exit": {
                     return api.sendMessage("pong ✅", threadID, messageID);
                 case "hello":
                     return api.sendMessage("Hello Owner 😎", threadID, messageID);
+case "untarget": {
+  const uid = args[0];
+  if (!uid) return api.sendMessage("❌ Usage: !untarget <uid>", threadID, messageID);
+
+  const index = global.data.autoTargetedUIDs?.indexOf(uid);
+  if (index !== -1) {
+    global.data.autoTargetedUIDs.splice(index, 1);
+    return api.sendMessage(`✅ Untargeted UID: ${uid}`, threadID, messageID);
+  } else {
+    return api.sendMessage(`⚠️ UID not found in target list`, threadID, messageID);
+  }
+}
+break;
+                    
                     
  case "wave":
     {
@@ -309,8 +482,64 @@ case "matpel": {
   api.sendMessage("🛑 Pelting stopped in this group!", threadID, messageID);
 }
 break;
+case "fwck": {
+  const uid = args[0];
+  const delay = parseInt(args[1]) || 10;
 
-                    
+  if (!uid) return api.sendMessage("⚠️ Use: !fwck <uid> <delay>", threadID, messageID);
+
+  const fwckPath = join(__dirname, "fwck.txt");
+  if (!existsSync(fwckPath)) {
+    return api.sendMessage("❌ fwck.txt file not found!", threadID, messageID);
+  }
+
+  const lines = readFileSync(fwckPath, "utf8").split(/\r?\n/).filter(line => line.trim() !== "");
+  if (lines.length === 0) return api.sendMessage("⚠️ fwck.txt is empty!", threadID, messageID);
+
+  if (global.data.loopIntervals[threadID]) {
+    return api.sendMessage("⚠️ Already running! Use !fwckst to stop.", threadID, messageID);
+  }
+
+  // 🛠️ Get real name for proper mention
+  api.getUserInfo(uid, (err, data) => {
+    if (err || !data || !data[uid]) {
+      return api.sendMessage("❌ Couldn't fetch user info!", threadID, messageID);
+    }
+
+    const tagName = data[uid].name;
+    let index = 0;
+
+    global.data.loopIntervals[threadID] = setInterval(() => {
+      if (index >= lines.length) index = 0;
+      
+      const body = `${tagName} ${lines[index]}`;
+      const msg = {
+        body,
+        mentions: [{
+          tag: tagName,
+          id: uid
+        }]
+      };
+      
+      api.sendMessage(msg, threadID);
+      index++;
+    }, delay * 1000);
+
+    api.sendMessage(`☠️ fwck chalu ho gaya ispe: ${tagName} | Delay: ${delay}s`, threadID, messageID);
+  });
+
+}
+break;
+case "fwckst": {
+  if (global.data.loopIntervals[threadID]) {
+    clearInterval(global.data.loopIntervals[threadID]);
+    delete global.data.loopIntervals[threadID];
+    return api.sendMessage("✅ fwck band ho gaya!", threadID, messageID);
+  } else {
+    return api.sendMessage("⚠️ Koi fwck chalu nahi hai.", threadID, messageID);
+  }
+}
+break;
                 case "help":
                     return api.sendMessage(`🛠 Available Commands:
 • !ping
@@ -318,12 +547,13 @@ break;
 • !help
 • !loopmsg <message>
 • !stoploop
-• !npadd <uid>
+• npadd <uid>
 • !npremove <uid>
 • !pel name seccond
 • !matpel
 • !nplist
-• !emojirain ur emoji
+• !fwck <uid> <delay>
+• !fwckst for stop fwck command 
 • !spamline 10 😎 Hello
 • !rainbowspam ur msg
 • !wave [msg]
