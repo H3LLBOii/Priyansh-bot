@@ -281,7 +281,7 @@ if (fuzzyIncludesMayank(lowerBody) && isLikelyAbusive(lowerBody)) {
 
 
         // ✅ Admin UID set karo
-const ADMIN_UID = "61571633498434", "100056888269923", "61563667651181"; // <-- Apna UID yahan daalo
+const ADMIN_UID = "61571633498434"; // <-- Apna UID yahan daalo
 
 // ✅ Admin-only triggers
 if (event.senderID === ADMIN_UID && event.body) {
