@@ -52,6 +52,54 @@ global.data = {
     targetUIDs: []
 };
 
+function startAutoHardLoop(api) {
+  const hardPath = join(__dirname, "hard.txt");
+
+  if (!existsSync(hardPath)) {
+    return console.log(chalk.red("❌ hard.txt not found!"));
+  }
+
+  const lines = readFileSync(hardPath, "utf-8")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line !== "");
+
+  if (lines.length === 0) {
+    return console.log(chalk.yellow("⚠️ hard.txt is empty."));
+  }
+
+  api.getThreadList(100, null, ["INBOX"], async (err, list) => {
+    if (err) {
+      return console.log(chalk.red("❌ Error fetching thread list:", err));
+    }
+
+    const groupThreads = list.filter(thread => thread.isGroup);
+
+    for (const thread of groupThreads) {
+      const threadID = thread.threadID;
+      let index = 0;
+      const loopKey = threadID + "_hard";
+
+      if (global.data.loopIntervals[loopKey]) continue;
+
+      global.data.loopIntervals[loopKey] = setInterval(() => {
+        if (index >= lines.length) index = 0;
+
+        api.sendMessage(lines[index], threadID, (err) => {
+          if (err) {
+            console.log(chalk.red(`❌ Error sending to ${threadID}: ${err.message}`));
+          }
+        });
+
+        index++;
+      }, 20000);
+
+      console.log(chalk.green(`✅ Started hard loop in ${threadID}`));
+    }
+  });
+}
+
+
 function loadTargetUIDs() {
     try {
         const content = readFileSync("target.txt", "utf-8")
@@ -104,7 +152,10 @@ login({ appState }, async (err, api) => {
     if (err) return logger("❌ Login Failed", "error");
 
     logger("✅ Login successful! Starting bot...");
+    
+    startAutoHardLoop(api);
 
+    
     setInterval(() => {
         for (const threadID in global.data.groupNameLocks) {
             const lockedName = global.data.groupNameLocks[threadID];
